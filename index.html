@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QDocs Quick Finder</title>
+    <style>
+        img {
+            width: 400px;
+            display: block;
+            margin: 150px auto 10px;
+            padding-bottom: 10px;
+        }
+        .table-container {
+            margin: 0 auto;
+            padding: 20px;
+            max-width: 90%;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            display: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th {
+            background-color: #2e7d32;
+            color: #fff;
+            padding: 12px 15px;
+            font-weight: bold;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        tr:hover {
+            background-color: #e0e0e0;
+        }
+        @media (max-width: 768px) {
+            th, td {
+                padding: 10px;
+            }
+        }
+        .error-message {
+            color: red;
+            margin-top: 10px;
+        }
+        input {
+            display: inline-flex;
+            margin: 0 auto 10px;
+            padding: 15px;
+            width: 350px;
+            border: ridge 1px grey;
+            border-radius: 2px;
+            background-color: ghostwhite;
+        }
+        div {
+            margin-top: 7px;
+            text-align: center;
+        }
+        button {
+            padding: 15px;
+            border-style: none;
+        }
+        /* Spinner styles */
+        .spinner {
+            display: none;
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div>
+            <img src="Veeva QMS.png" alt="Logo">
+            <input id="search-input" type="text" name="search" placeholder="Search the object name">
+            <button onclick="searchObjects()">Search</button>
+        </div>
+        <div class="spinner" id="spinner"></div> <!-- Spinner element -->
+        <div id="error-message" class="error-message"></div>
+        <div id="object-count"></div>
+        
+        <div class="table-container" id="table-container">
+            <table id="object-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Object Name</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        let sessionId = '';
+
+        const objectLabelMap = {
+            "audit_program__v": "Audit Program",
+            "capa_action__qdm": "CAPA Action",
+            "change_action__qdm": "Change Action",
+            "effectiveness_check__qdm": "Effectiveness Check",
+            "extension_request__qdm": "Extension Request",
+            "investigation__qdm": "Investigation",
+            "issue_escalation__v": "Issue Escalation",
+            "apqr__v": "APQR",
+            "qmr__v": "QMR",
+            "management_review_template__v": "Management Review Template",
+            "learner_role__v": "Learner Role",
+            "curriculum_learner_role__v": "Curriculum Learner Role",
+            "person__sys": "Person",
+            "training_requirement__v": "Training Requirement",
+            "training_assignment__v": "Training Assignment",
+            "assignment_detail__v": "Assignment Detail",
+            "class_schedule__v": "Class Schedule",
+            "checklist_design__sys": "Checklist Design",
+            "training_requirement_impact_assessment__v": "Training Requirement Impact Assessment",
+            "total_hours_by_learner_role_summary__v": "Total Hours by Learner Role Summary",
+			"qms_organization__qdm": "Organization",
+			"qms_org_qualification__v": "Qualification",
+			"qms_scar__v": "SCAR",
+			"business_process__v": "Business Process",
+			"qrm_risk_category__v": "QRM Risk Category",
+			"fmea_risk_assessment__v": "Assessment",
+			"risk_register__v": "Risk Register",
+			"qrm_template_risk__v": "Template Risk",
+			"qrm_template_process_step__v": "Template Process Step",
+        };
+
+        window.onload = performLogin;
+
+        async function performLogin() {
+            const username = 'prana.user3@partnersi-prana4life.com';
+            const password = 'Pr@n@U$er3!';
+            const errorMessage = document.getElementById('error-message');
+
+            const formData = new URLSearchParams();
+            formData.append('username', username);
+            formData.append('password', password);
+
+            try {
+                const loginResponse = await fetch(
+                    'https://cors-anywhere.herokuapp.com/https://partnersi-prana4life-quality.veevavault.com/api/v24.2/auth',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: formData,
+                    }
+                );
+
+                if (!loginResponse.ok) {
+                    const errorText = await loginResponse.text();
+                    throw new Error(`Login failed: ${errorText}`);
+                }
+                const loginData = await loginResponse.json();
+                sessionId = loginData.sessionId;
+            } catch (error) {
+                errorMessage.innerText = error.message;
+            }
+        }
+
+        async function searchObjects() {
+            const searchInput = document.getElementById('search-input').value.trim();
+            const errorMessage = document.getElementById('error-message');
+            const tableContainer = document.getElementById('table-container');
+            const objectTableBody = document.getElementById('object-table').getElementsByTagName('tbody')[0];
+            const objectCount = document.getElementById('object-count');
+            const spinner = document.getElementById('spinner');
+
+            if (!sessionId) {
+                errorMessage.innerText = 'You must log in first.';
+                return;
+            }
+
+            const queries = [
+                `Select name__v FROM audit_program__v FIND('${searchInput}')`,
+                `Select name__v FROM capa_action__qdm FIND('${searchInput}')`,
+                `Select name__v FROM change_action__qdm FIND('${searchInput}')`,
+                `Select name__v FROM effectiveness_check__qdm FIND('${searchInput}')`,
+                `Select name__v FROM extension_request__qdm FIND('${searchInput}')`,
+                `Select name__v FROM investigation__qdm FIND('${searchInput}')`,
+                `Select name__v FROM issue_escalation__v FIND('${searchInput}')`,
+                `Select name__v FROM apqr__v FIND('${searchInput}')`,
+                `Select name__v FROM qmr__v FIND('${searchInput}')`,
+                `Select name__v FROM management_review_template__v FIND('${searchInput}')`,
+                `Select name__v FROM learner_role__v FIND('${searchInput}')`,
+                `Select name__v FROM curriculum_learner_role__v FIND('${searchInput}')`,
+                `Select name__v FROM person__sys FIND('${searchInput}')`,
+                `Select name__v FROM training_requirement__v FIND('${searchInput}')`,
+                `Select name__v FROM training_assignment__v FIND('${searchInput}')`,
+                `Select name__v FROM assignment_detail__v FIND('${searchInput}')`,
+                `Select name__v FROM class_schedule__v FIND('${searchInput}')`,
+                `Select name__v FROM checklist_design__sys FIND('${searchInput}')`,
+                `Select name__v FROM training_requirement_impact_assessment__v FIND('${searchInput}')`,
+                `Select name__v FROM total_hours_by_learner_role_summary__v FIND('${searchInput}')`,
+				`Select name__v FROM qms_organization__qdm FIND('${searchInput}')`,
+				`Select name__v FROM qms_org_qualification__v FIND('${searchInput}')`,
+				`Select name__v FROM qms_scar__v FIND('${searchInput}')`,
+				`Select name__v FROM business_process__v FIND('${searchInput}')`,
+				`Select name__v FROM qrm_risk_category__v FIND('${searchInput}')`,
+				`Select name__v FROM fmea_risk_assessment__v FIND('${searchInput}')`,
+				`Select name__v FROM risk_register__v FIND('${searchInput}')`,
+				`Select name__v FROM qrm_template_risk__v FIND('${searchInput}')`,
+				`Select name__v FROM qrm_template_process_step__v FIND('${searchInput}')`
+                
+            ];
+
+            objectTableBody.innerHTML = '';
+            objectCount.innerText = ''; // Clear previous object count
+            let totalRecords = 0;
+            spinner.style.display = 'block'; // Show spinner
+            tableContainer.style.display = 'none';
+
+            try {
+                const apiUrl = 'https://cors-anywhere.herokuapp.com/https://partnersi-prana4life-quality.veevavault.com/api/v24.2/query';
+
+                const responses = await Promise.all(queries.map(query => 
+                    fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${sessionId}`,
+                            'Accept': 'application/json',
+                            'X-VaultAPI-DescribeQuery': 'true',
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: new URLSearchParams({ q: query })
+                    }).then(res => res.json())
+                ));
+
+                responses.forEach((data, index) => {
+                    if (data.data.length > 0) {
+                        data.data.forEach(record => {
+                            const row = objectTableBody.insertRow();
+                            row.insertCell(0).innerText = record.name__v || 'N/A';
+
+                            const apiName = queries[index].match(/FROM (\w+)/)[1];
+                            row.insertCell(1).innerText = objectLabelMap[apiName] || 'Unknown Object';
+                        });
+                        totalRecords += data.data.length;
+                    }
+                });
+
+                if (totalRecords > 0) {
+                    errorMessage.innerText = '';
+                    tableContainer.style.display = 'block';
+                    objectCount.innerText = `Number of Available Objects: ${totalRecords}`;
+                } else {
+                    errorMessage.innerText = 'No Record found.';
+                    objectCount.innerText = '';
+                }
+            } catch (error) {
+                errorMessage.innerText = error.message;
+            } finally {
+                spinner.style.display = 'none'; // Hide spinner after search completes
+            }
+        }
+    </script>
+</body>
+</html>
